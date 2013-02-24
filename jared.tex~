@@ -1,0 +1,359 @@
+\documentclass{article}
+\usepackage{sagetex}
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+\begin{document}
+
+
+\section{Basic setup}
+We wish to compute in the ring $\mathcal O_L = \mathbf{F}_q[[t^{1/q^\infty}]]$,
+the $t$-adic completion of $\mathbf{F}_q[t^{1/q^\infty}]$. For concreteness we set $q=3$,
+and  begin by constructing $\mathbf{F}_q$ and $\mathbf{F_q}^\times$ in Sage:
+\begin{sageblock}
+q = 3
+Fq.<a> = GF(q)
+Fqx = Fq.list()[:]; Fqx.remove(0)
+\end{sageblock}
+For computational purposes, we bound the power of $q$ that can occur in the denominators
+of the exponents of powers of $t$:
+\begin{sageblock}
+bound = 10
+\end{sageblock}
+Now we construct the ring $R=\mathbf{F}_q[t^{1/q^{bound}}]$:
+\begin{sageblock}
+vars = ["t"] + ["t_"+str(i) for i in range(1,bound+1)]
+R0 = PolynomialRing(Fq,vars)
+I = R0.ideal([R0(vars[i])^q-R0(vars[i-1]) for i in range(1,bound+1)])
+R = R0.quo(I)
+\end{sageblock}
+We will abbreviate $t^{q^{1/n}}$ by $t_n$:
+\begin{sageblock}
+t = R.gens()[0]
+t_1,t_2,t_3,t_4 = var("t_1,t_2,t_3,t_4")
+[t_1,t_2,t_3,t_4] = R.gens()[1:5] 
+\end{sageblock}
+For example, we can compute in Sage that, in $R$, we have $t_4^{q^4}-t = \sage{t_4^(q^4)-t}$,
+and likewise test that $tt_1 = t_1^{q+1}: \sage{t*t_1==t_1^(q+1)}$.
+
+Now we can't actually work in the completion $\mathcal O_L$ of $R$ in Sage,
+but we can at least construct the normalized $t$-adic valuation.
+For example, we want $v(t_2^5+t_4^{q^{10}}) = 5/q^2=\sage{5/q^2}$.
+Here's a slick way to code this:
+\begin{sageblock}
+def v(r):
+    S.<x> = PolynomialRing(Fq)
+    phi = R0.hom([x]+[0 for i in range(bound)],S)
+    s0 = (r^(q^bound)).lift() # lift r to a polynomial
+    s = phi(s0)
+    return s.valuation() / (q^bound)
+\end{sageblock}    
+Unfortunately, this won't work when bound is reasonable large, because taking large powers is a no-no in Sage.
+
+So here is a hacky solution:
+\begin{sageblock}
+print "Defining v(r)"
+def v(r):
+    if r == 0:
+        return Infinity
+    r1 = r/r.lc()
+    mvs = []
+    d = zip(R.variable_names(),
+                 ["("+str(q^(-i))+")" for i in range(len(R.variable_names()))])
+    #       probably should build this dict once and store it, 
+    #       rather than creating it every time v(r) is called
+    d.append(("*","+"))
+    d.append(("^","*"))
+    while r1 != 0:
+        r1 = r1/r1.lc()
+        #print r1.lift()
+        m = r1.lm() # get the normalized leading monomial
+        ms = str(m) # turn this into a string
+        for dd in d:
+            ms = ms.replace(dd[0],dd[1])
+        mv = QQ(sage.calculus.calculus.symbolic_expression_from_string(ms)) 
+       # mv is the valuation of the leading monomial of r1        
+        mvs.append(mv)
+        r1 = r1 - m
+    return min(mvs)
+\end{sageblock}
+
+
+Let 
+\begin{sageblock}
+r = var("r") 
+r = t_2^5 + t_4^(q^10)
+\end{sageblock}
+Then $v(r) = \sage{v(r)}$.
+
+\section{A hopefully convergent sequence}
+Let $K = \mathbf{F}_q((\pi))$ and let $\mathcal F$ be a Lubin--Tate formal $\mathcal O_K$-module.
+Setting $K_n = K(\mathcal F[\pi^n]), K_\infty=\bigcup K_n$, we have $L = \mathrm{Frac}(\mathcal O_L) = \hat{K}_\infty$, and the galois group $H=\mathrm{Gal}(K_\infty/K)$ acts on $L$.
+
+We define $A_n = \mathbf{F}_q^\times \times \mathbf{F_q}^{n-1}$:
+\begin{sageblock}
+def A(n):
+    return map(flatten, CartesianProduct(Fqx,map(list,VectorSpace(Fq,n-1).list())))
+\end{sageblock}
+Jared conjectures that
+\[\pi = \lim_{n\to\infty} \prod_{(a_0,\ldots, a_{n-1})\in A} (\sum a_i t^{q^i})^{q^{-n}}\]
+should converge to an element $\pi\in\mathcal{O}_L$ which is fixed by the action of $H$.
+Write $\pi_n$ for the expression in the limit.
+\begin{sageblock}
+def pi(n):
+    t_n = R.gens()[n] 
+    return prod([sum([a[i]*t_n^(q^i) for i in range(n)]) for a in A(n)])
+\end{sageblock}
+
+\begin{sagesilent}
+print pi(1)
+print pi(2)
+print pi(3)
+def prettyPrint(r):
+    d = zip(map(str,R.gens()),vars)
+    s = str(r)
+    for dd in d:
+        s = s.replace(dd[0],dd[1])
+    r.rename(s)
+    return r
+\end{sagesilent}
+ 
+Examples:
+\begin{sageblock}
+pi_1 = pi(1)
+print 1
+pi_2 = pi(2)
+print 2
+pi_3 = pi(3)
+print 3
+pi_4 = pi(4)
+print 4
+pi_5 = pi(5)
+#print 5
+pi_6 = pi(6)
+#print 6
+#pi_7 = pi(7)
+#print 7
+#pi_8 = pi(8)
+#print 8
+#pi_9 = pi(9)
+#print 9
+\end{sageblock}
+% It is necessary to lift the elements of R to elements of the polynomial
+% ring R0 (defined above), in order to get Sage to TeXiFy them properly.
+\[\pi_1 = \sage{pi_1.lift()}\]
+\[\pi_2 = \sage{pi_2.lift()}\]
+\[\pi_3 = \sage{pi_3.lift()}\]
+%\[\pi_4 = \sage{pi_4.lift()}\]
+%\[\pi_5 = \sage{pi_5.lift()}\]
+
+Hmm, it is difficult to tell whether these are converging!
+\[v(\pi_2-\pi_1) = \sage{v(pi_2-pi_1)}\]
+\[v(\pi_3-\pi_2) = \sage{v(pi_3-pi_2)}\]
+\[v(\pi_4-\pi_3) = \sage{v(pi_4-pi_3)}\]
+\[v(\pi_5-\pi_4) = \sage{v(pi_5-pi_4)}\]
+\[v(\pi_6-\pi_5) = \sage{v(pi_6-pi_5)}\]
+%\[v(\pi_7-\pi_6) = \sage{v(pi_7-pi_6)}\]
+%\[v(\pi_8-\pi_7) = \sage{v(pi(8)-pi(7))}\]
+%\[v(\pi_9-\pi_8) = \sage{v(pi(9)-pi(8))}\]
+%\[v(\pi_{10}-\pi_9) = \sage{v(pi(10)-pi(9))}\]
+
+The data for a few small choices of $q$:
+\[q=2: v(\pi_{n+1}-\pi_n) = \frac24+\frac n4,n=1,\ldots, 8\]
+\[q=3: v(\pi_{n+1}-\pi_n) = \frac59+\frac{4n}{9},n=1,\ldots,5\]
+\[q=4: v(\pi_{n+1}-\pi_n) = \frac{12}{16} +\frac{9n}{16},n=1,\ldots, 3\]
+\[q=5: v(\pi_{n+1}-\pi_n) = \frac{20}{25}+\frac{16n}{25},n=1,\ldots,3\]
+
+
+OK, this does look like a Cauchy sequence! Of course, that could be an artifact 
+of working with just this small example. Can we prove it?
+
+\section{The sequence is cauchy)}
+Yes, we can prove it. The example above indicates that we should try to show that the sequence
+\[v(\pi_{n+1}-\pi_n)\]
+is an increasing arithmetic progression in $n$. 
+Equivalently, we should try to show
+\[v(\tfrac{\pi_{n+2}-\pi_{n+1}}{\pi_{n+1}-\pi_n}) = const. > 0.\]
+Specifically, it looks a lot like
+\[v(\tfrac{\pi_{n+2}-\pi_{n+1}}{\pi_{n+1}-\pi_n}) = \frac{(q-1)^2}{q^2} > 0.\]
+
+Given a tuple $a\in \mathbf{F}_q^n$, for brevity we write
+\[f_a = \sum_{i=0}^{n-1} a_i t^{q^i}.\]
+Observe that the valuation of $f_a$
+is $q^{\min\{i:a_i\neq 0\}}$.
+
+Let's go for a direct approach. We have
+\[d = \tfrac{\pi_{n+1}-\pi_{n}}{\pi_{n}-\pi_n-1} = \frac{\prod_{a\in A_n} \prod_{x\in \mathbf F_q}(f_a +aq^n)^{q^{-n-1}} - \prod_{a\in A_n} f_a^{q^{-n}}}
+{\prod_{a\in A_n} f_a^{q^{-n}} - \prod}\]
+
+
+
+\subsection{}
+ 
+We can easily calculate that the difference
+\[\delta_n := (\pi_{n+1} - \pi_n)^{q^{n+1}} = \prod_{b\in A_n} \left(\prod_{c\in \mathbf{F}_q} (f_b + ct^{q^n})\right) - \prod_{b\in A_n} f_b^q.\]
+
+
+
+
+
+
+
+Consider the expansion of the inner product
+\[\prod_{c\in \mathbf{F}_q}(f_b + ct^{q^n})
+= f_b^q + \sum_{i=1}^{q-1} f_b^{q-i}t^{iq^n}S_i, \qquad S_i := \sum_{S=\{c_0,\ldots\}\subset \mathbf{F}_q, \# S = i} c_1\cdots c_i .\]
+Let us abbreviate
+\[g_{b,n} = \sum_{i=1}^{q-1} f_b^{q-i} t^{iq^n} S_i.\]
+Let
+\[\sigma = \min\{i>0:S_i\neq 0\}.\]
+If $\sigma=\infty$ then $g_{b,n}=0$ for all $b$,
+so $\delta_n=0$, i.e. $\pi_{n+1}=\pi_n$. Let's not worry about this case; 
+I think it never happens, but I'm not sure.
+
+So
+\[\delta_n = \prod_{b\in A_n} (f_b^q + g_{b,n}) - \prod_{b\in A_n} f_b^q
+= \sum_{\varnothing\neq B\subset A_n} \prod_{b\not\in B} f_b^q \prod_{b\in B} g_{b,n}.\]
+Abbreviate
+\[\gamma_{n,B} = \prod_{b\in B} g_{n,b}.\]
+
+Observe 
+\[\gamma_{n, A_n} = \prod_{b\in A_n}g_{b,n}
+= \prod_{b\in A_n} f_b^{q-\sigma}t^{\sigma q^n} S_\sigma + O(t^{(\#A_n-1)(q-\sigma+\sigma q^n)+(\sigma+1)q^n}).\]
+
+
+
+Thus
+\[(\tfrac{\pi_{n+2}-\pi_{n+1}}{\pi_{n+1}-\pi_n})^{q^{n+1}} = \frac{\delta_{n+1}}{\delta_n^q} = \frac{\sum_{\varnothing\neq B\subset A_{n+1}}\gamma_{n+1,B}t^{q\#(A_{n+1}-B)}}{\sum_{\varnothing\neq B\subset A_n} \gamma_{n,B}^qt^{q^2\#(A_n-B)}} \cdot (unit).\]
+
+
+
+
+\subsection{}
+Let us pause to make a na\"ive estimate of the valuation of $\delta_n$.
+We have
+\[v(\delta_n) \geq \min_{i=1}^\infty v(\sum_{B\subset A_n,\#B=i} \gamma_{n,B} t^{q(\#A_n-i)}).\]
+Na\"ively estimatling $v(g_{n,b}) \geq 2q^n + q - 2$ (FIXME: this may need $q\neq 2$!)
+and hence $v(\gamma_{n,B})\geq \#B(2q^n+q-2)$,
+we find that if $\#B = i $, then  $v(\gamma_{n,B} t^{q(\#A_n-i)}) \geq i(2q^n+q-2) + q(q^n-q^{n-1} - iq)
+= i(2q^n-q^2+q-2) + (q-1)q^n$. Taking $i=1$,
+we thus see that $v(\delta_n)\geq q^{n+1}+q^n-q^2+q-1$.
+
+Unfortunately, this doesn't quite prove that $v(\pi_{n+1}-\pi_n)$ is increasing;
+just that it is bounded below by a function converging to 1.
+
+
+If we assume $v(\delta_n) = q^{n+1}(\delta_1 + (q-1)^2(n-1)q^{-2})$
+then $v(\delta_{n+1}) = q^{n+2}(\delta_1 + (q-1)^2q^{-2}(n-1)) + v(\delta_{n+1}/\delta_n^q)$.
+So we seek to prove that $v(\delta_{n+1}/\delta_n^q) = (q-1)^2q^n$,
+for then we win by induction.
+
+
+
+
+
+
+
+\subsection{}
+Returning to our main calculation...
+
+Now $A_{n+1} = A_n\times \mathbf{F}_q$, 
+and so -- ignoring the unit, which we do not care about -- the expression above simplifies to
+\[\frac{\sum_{\varnothing\neq B\subset A_{n+1}}\gamma_{n+1,B}t^{-q\#B}}{\sum_{\varnothing\neq B\subset A_n} \gamma^q_{n,B}t^{-q^2\#B}}.\]
+It will be convenient to denote $\gamma_{n,B}t^{-q\#B}$ by $\tilde \gamma_{n,B}$.
+We can extend this function to the empty subset $B=\varnothing\subset A_n$
+by declaring $\tilde \gamma_{n,\varnothing} = 1$.
+
+Next observe that subsets $B \subset A_{n+1}$ are naturally in bijection with 
+collections $\underline B = \{B_c \subset A_n\}_{c\in \mathbf{F}_q}$.
+The bijection simply sends $\underline B \mapsto \bigsqcup B_c\times\{c\}$ in one direction,
+and $B\mapsto \{\{b\in A_n\mid (b,c)\in B\}\}_{c\in \mathbf F_q}$ in the other direction.
+(In other words, we can decompose a subset of $A_{n+1}$ uniquely into ``horizontal slices''.)
+Moreover, $B=\varnothing$ if and only if $\underline B = \{\varnothing\}_{c\in \mathbf{F}_q}$.
+
+This is useful because $B\mapsto \gamma_{n,B}$ is a multiplicative function of
+$B\subset A_n$, in the sense that if $B_1\cap B_2=\varnothing$, then
+$\gamma_{n,B_1\sqcup B_2} = \gamma_{n, B_1}\gamma_{n,B_2}$. Likewise
+$B\mapsto t^{-q\#B}$ is also multiplicative in this sense. So $\tilde\gamma_{n,B}$ has the same property as well.
+
+So the numerator of the previous expression becomes
+\[N_n - 1 = \sum_{\underline B} \prod_{c\in \mathbf F_q} \tilde \gamma_{n+1,B_c\times\{c\}} - 1,\]
+where $\underline B$ ranges through tuples of subsets of $A_n$ indexed by elements of $\mathbf F_q$.
+The denominator of the same expression becomes
+\[D_n - 1 = \sum_{B\subset A_n} \tilde \gamma_{n,B}^q - 1.\]
+That is, 
+\[v(\delta_{n+1})-v(\delta_n) =  v(\tfrac{N_n-1}{D_n-1}).\]
+
+Next let us understand how to relate, for $B\subset A_n$ and $x\in \mathbf{F}_q$, the values
+\[\tilde \gamma_{n+1, B\times\{x\}}\text{  and  } \tilde\gamma_{n,B}.\]
+First observe that
+\[f_{(b,x)} = f_b + xt^{q^n}.\]
+So
+\[g_{n+1,(b,x)} = \sum_{i=1}^{q-1} f_{(b,x)}^{q-i} t^{iq^{n+1}} S_i
+= \sum_{i=1}^{q-1} (f_b + xt^{q^n})^{q-i} t^{iq^{n+1}} S_i \]
+\[ = \sum_{i=1}^{q-1} \left( f_b^{q-i}t^{iq^{n+1}}S_i + t^{iq^{n+1}}S_i\sum_{j=1}^{q-i} \binom{q-i}{j} f_b^{q-i-j}x^jt^{jq^n}\right)\]
+\[ = \sum f_b^{q-i}t^{iq^{n+1}}S_i  + O(t^{q^{2n+1}+q-2}).\]
+On the other hand
+\[g_{n,b} = \sum f_b^{q-i}t^{iq^{n}}S_i.\]
+Let $A_i = f_b^{q-i}t^{iq^n}S_i$
+and $C_i = t^{iq^n(q-1)}$.
+Then $\sum A_i = g_{n,b}$ and $\sum A_iC_i = g_{n+1,(b,x)}+O(t^{q^{2n+1}+q-2})$.
+Summing by parts, we have
+\[g_{n+1,(b,x)}+O(t^{q^{2n+1}+q-2}) = \sum A_iC_i = C_1\sum A_i + \sum_{j=1}^{q-2}(C_{j+1}-C_j)\sum_{k=j+1}^{q-1}A_k\]
+\[= t^{q^n(q-1)} g_{n,b}  + \sum_{j=1}^{q-2}t^{(q-1)q^nj}(t^{(q-1)q^n}-1)\sum_{k=j+1}^{q-1}f_b^{q-k}t^{kq^n}S_k
+= t^{(q-1)q^n}g_{n,b} + O(t^{q^{n+1}}).\]
+So, roughly,
+\[g_{n+1,(b,x)} = t^{(q-1)q^n}g_{n,b} + O(t^{q^{n+1}}).\]
+So we have
+\[\gamma_{n+1, B\times\{x\}} = \prod_{b\in B} g_{n+1,(b,x)} = \prod_{b\in B}(t^{(q-1)q^n}g_{n,b} + O(t^{q^{n+1}}))
+= t^{(q-1)q^n\#B}\gamma_{n,B} + \epsilon_{B,x}.\]
+To estimate the error, observe that trivially $v(g_{n,b}) \geq q^n + q - 1$.
+So
+\[v(\epsilon_{B,x}) \geq (q^{n+1}+q-1)(\#B - 1) + q^{n+1} = \#B\cdot q^{n+1}+\# B\cdot q -\#B+1.\]
+Thus
+\[\tilde \gamma_{n+1,B\times\{x\}} = t^{(q-1)q^n\#B}\tilde \gamma_{n,b} + \tilde\epsilon_{B,x}\]
+where 
+\[v(\tilde \epsilon_{B,x})  \geq \#B (q^{n+1} - 1) + 1.\]
+
+Plugging this in, we find
+\[N_n -1 = -1+\sum_{\underline B} \prod_{c\in\mathbf F_q} (\tilde \gamma_{n,B_c} + O(t^{q^n-1}))\]
+Since $v(g_{n,b})\geq q-1+q^n$,
+we have $v(\gamma_{n,B})\geq \# B\cdot(q^n+q-1)$
+and $v(\tilde\gamma_{n,B})\geq \# B\cdot(q^n-1)\geq 0$.
+Thus
+\[N_n -1 = -1+\sum_{\underline B} \left(\left(\prod_{c\in \mathbf F_q} \tilde\gamma_{n,B_c}\right)+O(t^{q^n-1})\right) = O(t^{q^n-1}) - 1 + \sum_{\underline B}\prod_{c\in\mathbf F_q} \tilde \gamma_{n,B_c}.\] 
+
+Now we are getting somewhere!
+
+The ``almost'' denominator
+\[D_n = \sum_{B\subset A_n} \tilde \gamma_{n, B}\]
+has the property that
+\[D_n^q = \sum_{B_1,\ldots, B_q\subset A_n} \prod_{i=1}^q\tilde \gamma_{n, B_i}
+ = \sum_{\underline B} \prod_{c\in\mathbf F_q} \tilde\gamma_{n,B_c}
+ = N_n + O(t^{q^n-1}).\]
+So
+\[\frac{N_n-1}{D_n-1} = \frac{D_n^q - 1 + O(t^{q^n-1})}{D_n - 1}.\]
+
+
+
+What can we say about the denominator $D_n-1$?
+Well by definition it is $t^{-q\#A_n}\delta_n$.
+So the valuation of our error term is
+\[q^n-1+q\#A_n - v(\delta_n) = q^{n+1}-1 - v(\delta_n).\]
+Our main term is
+\[\frac{D_n^q-1}{D_n-1} = D_n^{q-1} + D_n^{q-2} + \cdots + D_n + 1.\]
+Any $\tilde \gamma_{n,B}$ is integral, so $D_n$ is integral, so our main term is integral.
+So provided $v(\delta_n)\leq q^{n+1}-1$,
+$\min(v(main),v(error))\geq 0$, and thus 
+it follows that
+\[v(\delta_{n+1}) = v(\delta_n)+ q^{n-1} - (q-1)^2 + v(\tfrac{N_n-1}{D_n-1}) \geq v(\delta_n) + q^{n-1}-(q-1)^2.\]
+Since by the na\"ive bound, $v(\delta_n)\geq q^{n+1}+q^n-q^2+q-1$,
+we see that when $v(\delta_n) < q^{n+1}$ we must have
+\[v(\delta_{n+1}) \geq q^{n+1}\]
+
+
+$q^{n+1}(a+(n+1)d) - q^n(a+nd)
+= q^n(a+nd)(n-1)+dq^{n+1}$
+
+\end{document}
+
+
